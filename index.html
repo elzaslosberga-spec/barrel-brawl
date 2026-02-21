@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barrel Brawl</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #12121a;
+    color: #ccc;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    user-select: none;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    width: 100%;
+    max-width: 420px;
+    background: #1a1a28;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+  }
+  #topbar button {
+    background: none;
+    border: none;
+    color: #55556a;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+  #topbar button:hover { color: #aaa; }
+  #turn-label { font-size: 14px; font-weight: 700; }
+  #timer-wrap { display: flex; align-items: center; gap: 4px; color: #55556a; font-size: 13px; }
+  #timer-val  { font-weight: 700; min-width: 20px; text-align: right; }
+
+  /* ── GAME AREA ── */
+  #game { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 420px; }
+
+  /* ── HAND ── */
+  .hand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 6px;
+  }
+  .hand-label { font-size: 11px; font-weight: 700; min-width: 36px; }
+  .barrel-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .barrel-btn.selected  { border-color: #fdd835; }
+  .barrel-btn.disabled  { opacity: 0.25; cursor: default; }
+  .barrel-btn canvas    { display: block; }
+  .barrel-btn .count    { font-size: 10px; font-weight: 700; color: #aaa; }
+  .barrel-btn.selected .count { color: #fdd835; }
+
+  /* ── BOARD ── */
+  #board-wrap { padding: 4px 0; }
+  #board { display: block; cursor: pointer; }
+
+  /* ── STATUS ── */
+  #status { font-size: 11px; color: #55556a; padding: 4px 0 12px; min-height: 22px; text-align: center; }
+
+  /* ── MENU ── */
+  #menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 50px 30px;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+  }
+  #menu h1   { font-size: 28px; font-weight: 800; color: white; margin-bottom: 4px; }
+  #menu p    { font-size: 12px; color: #55556a; margin-bottom: 20px; }
+  .menu-btn  {
+    width: 200px; padding: 12px;
+    background: #b71c1c; color: white;
+    border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .menu-btn:hover { background: #c62828; }
+  .menu-legend { display: flex; gap: 14px; margin-top: 20px; }
+  .legend-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: #55556a; }
+
+  /* ── ONLINE PANEL ── */
+  #online-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+    padding: 50px 30px;
+  }
+  #online-panel h2 { font-size: 20px; font-weight: 700; color: white; }
+  .online-btn {
+    width: 220px; padding: 11px;
+    background: #0d47a1; color: white;
+    border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 700;
+    cursor: pointer;
+  }
+  .online-btn:hover { background: #1565c0; }
+  #join-wrap { display: flex; gap: 8px; }
+  #join-code {
+    width: 110px; padding: 10px 12px;
+    background: #1e1e2e; color: white;
+    border: 1px solid #33334a;
+    border-radius: 8px; font-size: 15px;
+    font-weight: 700; letter-spacing: 3px;
+    text-transform: uppercase; text-align: center;
+  }
+  #join-code:focus { outline: none; border-color: #fdd835; }
+  #join-submit {
+    padding: 10px 16px;
+    background: #1e1e2e; color: #fdd835;
+    border: 1px solid #fdd835;
+    border-radius: 8px; font-size: 13px;
+    font-weight: 700; cursor: pointer;
+  }
+  #back-btn { background: none; border: none; color: #55556a; font-size: 12px; cursor: pointer; margin-top: 8px; }
+  #back-btn:hover { color: #aaa; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR (game only) -->
+<div id="topbar" style="display:none">
+  <button id="menu-btn">Menu</button>
+  <span id="turn-label"></span>
+  <div id="timer-wrap">⏱ <span id="timer-val"></span></div>
+  <button id="restart-btn">Restart</button>
+</div>
+
+<!-- MENU -->
+<div id="menu">
+  <h1>Barrel Brawl</h1>
+  <p>Merge barrels · own the grid</p>
+  <button class="menu-btn" id="btn-bot">vs Bot</button>
+  <button class="menu-btn" id="btn-local">2 Players</button>
+  <button class="menu-btn" id="btn-online" style="background:#0d47a1">Online</button>
+  <div class="menu-legend" id="legend"></div>
+  <p style="margin-top:10px;text-align:center;line-height:1.6">
+    Place on empty cells, or cover any same-tier<br>barrel (yours or opponent's) to merge up.<br>15 seconds per turn.
+  </p>
+</div>
+
+<!-- ONLINE PANEL -->
+<div id="online-panel">
+  <h2>Online</h2>
+  <button class="online-btn" id="create-btn">Create Room</button>
+  <div id="join-wrap">
+    <input id="join-code" maxlength="4" placeholder="CODE">
+    <button id="join-submit">Join</button>
+  </div>
+  <button id="back-btn">← Back</button>
+</div>
+
+<!-- GAME -->
+<div id="game">
+  <div class="hand" id="hand2"></div>
+  <div id="board-wrap"><canvas id="board"></canvas></div>
+  <div class="hand" id="hand1"></div>
+  <div id="status"></div>
+</div>
+
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
+const TIER_COLOR = {
+  small:  { body: "#4caf50", cap: "#388e3c", band: "#2e7d32" },
+  medium: { body: "#ff9800", cap: "#e65100", band: "#bf360c" },
+  large:  { body: "#ab47bc", cap: "#6a1b9a", band: "#4a148c" },
+  mega:   { body: "#fdd835", cap: "#f9a825", band: "#f57f17" },
+};
+const P_BG    = { 1: "#b71c1c", 2: "#0d47a1" };
+const P_HOVER = { 1: "#c62828", 2: "#1565c0" };
+const P_TEXT  = { 1: "#ef9a9a", 2: "#90caf9" };
+const P_NAME  = { 1: "Red",    2: "Blue"    };
+
+const CELL     = 110;
+const PAD      = 8;
+const BOARD_PX = CELL * 3 + PAD * 4;
+const BW = 22, BH = 36, RIM = 4;   // barrel dimensions
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let socket, roomCode, myPlayer, gameMode;
+let gameState  = null;
+let selected   = null;
+let hoverCell  = null;
+let timerVal   = 15;
+
+// ── SOCKET ────────────────────────────────────────────────────────────────────
+function connectSocket() {
+  if (socket) return;
+  socket = io();
+
+  socket.on("joined", d => {
+    roomCode = d.code;
+    myPlayer = d.player;  // 0=local both, 1=red, 2=blue
+    showGame();
+  });
+
+  socket.on("state", s => {
+    gameState = s;
+    renderAll();
+  });
+
+  socket.on("timer", d => {
+    timerVal = d.t;
+    const el = document.getElementById("timer-val");
+    el.textContent = d.t;
+    el.style.color = d.t <= 5 ? "#e53935" : "#55556a";
+  });
+
+  socket.on("status", d => {
+    setStatus(d.msg, d.color);
+  });
+
+  socket.on("error", d => {
+    setStatus(d.msg, "#e53935");
+  });
+}
+
+// ── MENU ──────────────────────────────────────────────────────────────────────
+document.getElementById("btn-bot").onclick = () => {
+  gameMode = "bot";
+  connectSocket();
+  socket.emit("start_bot");
+};
+document.getElementById("btn-local").onclick = () => {
+  gameMode = "local";
+  connectSocket();
+  socket.emit("start_local");
+};
+document.getElementById("btn-online").onclick = () => {
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("online-panel").style.display = "flex";
+};
+document.getElementById("create-btn").onclick = () => {
+  gameMode = "online";
+  connectSocket();
+  socket.emit("create_online");
+};
+document.getElementById("join-submit").onclick = () => {
+  const code = document.getElementById("join-code").value.trim().toUpperCase();
+  if (code.length !== 4) { alert("Enter a 4-letter room code."); return; }
+  gameMode = "online";
+  connectSocket();
+  socket.emit("join_online", { code });
+};
+document.getElementById("back-btn").onclick = () => {
+  document.getElementById("online-panel").style.display = "none";
+  document.getElementById("menu").style.display = "flex";
+};
+document.getElementById("menu-btn").onclick = goMenu;
+document.getElementById("restart-btn").onclick = () => {
+  selected = null;
+  socket.emit("restart", { code: roomCode });
+};
+
+function showGame() {
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("online-panel").style.display = "none";
+  document.getElementById("topbar").style.display = "flex";
+  document.getElementById("game").style.display = "flex";
+  const canvas = document.getElementById("board");
+  canvas.width  = BOARD_PX;
+  canvas.height = BOARD_PX;
+  canvas.onclick  = onBoardClick;
+  canvas.onmousemove = onBoardHover;
+  canvas.onmouseleave = () => { hoverCell = null; drawBoard(); };
+  buildLegend();
+}
+
+function goMenu() {
+  document.getElementById("topbar").style.display = "none";
+  document.getElementById("game").style.display = "none";
+  document.getElementById("menu").style.display = "flex";
+  gameState = null; selected = null;
+  document.getElementById("timer-val").textContent = "";
+}
+
+// ── BARREL DRAW ───────────────────────────────────────────────────────────────
+function drawBarrel(ctx, cx, cy, tier) {
+  const c  = TIER_COLOR[tier];
+  const x0 = cx - BW, y0 = cy - BH, x1 = cx + BW, y1 = cy + BH;
+
+  // Body
+  ctx.fillStyle = c.body;
+  ctx.fillRect(x0, y0, BW*2, BH*2);
+
+  // Bottom rim
+  ctx.fillStyle = c.cap;
+  ctx.beginPath();
+  ctx.ellipse(cx, y1, BW, RIM, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Bands
+  ctx.fillStyle = c.band;
+  const spacing = (BH*2) / 4;
+  for (let i = 1; i <= 3; i++) {
+    const by = y0 + i * spacing;
+    ctx.fillRect(x0, by - 2, BW*2, 4);
+  }
+
+  // Top rim
+  ctx.fillStyle = c.cap;
+  ctx.beginPath();
+  ctx.ellipse(cx, y0, BW, RIM, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Mega star
+  if (tier === "mega") {
+    ctx.fillStyle = "#7a5800";
+    ctx.font = "bold 14px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("★", cx, cy + 2);
+  }
+}
+
+// ── BOARD ─────────────────────────────────────────────────────────────────────
+function cellRect(r, c) {
+  return {
+    x: PAD + c * (CELL + PAD),
+    y: PAD + r * (CELL + PAD),
+    w: CELL, h: CELL
+  };
+}
+
+function xyToCell(x, y) {
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const {x: cx, y: cy, w, h} = cellRect(r, c);
+      if (x >= cx && x <= cx+w && y >= cy && y <= cy+h) return [r, c];
+    }
+  }
+  return null;
+}
+
+function drawBoard() {
+  if (!gameState) return;
+  const canvas = document.getElementById("board");
+  const ctx    = canvas.getContext("2d");
+  ctx.clearRect(0, 0, BOARD_PX, BOARD_PX);
+  ctx.fillStyle = "#0d0d18";
+  ctx.fillRect(0, 0, BOARD_PX, BOARD_PX);
+
+  const winSet = new Set((gameState.winCells || []).map(([r,c]) => `${r},${c}`));
+
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const {x, y, w, h} = cellRect(r, c);
+      const stack  = gameState.board[r][c];
+      const isHover = hoverCell && hoverCell[0]===r && hoverCell[1]===c;
+      const isWin  = winSet.has(`${r},${c}`);
+
+      let bg;
+      if (isWin) {
+        bg = "#5a4a00";
+      } else if (stack.length > 0) {
+        const owner = stack[stack.length-1][0];
+        bg = isHover ? P_HOVER[owner] : P_BG[owner];
+      } else {
+        bg = (isHover && selected) ? "#2a2a3e" : "#1e1e2e";
+      }
+
+      ctx.fillStyle = bg;
+      ctx.fillRect(x, y, w, h);
+
+      if (stack.length > 0) {
+        const [, tier] = stack[stack.length-1];
+        drawBarrel(ctx, x + w/2, y + h/2, tier);
+      }
+    }
+  }
+}
+
+// ── HAND ──────────────────────────────────────────────────────────────────────
+function buildHand(playerId) {
+  const el = document.getElementById(`hand${playerId}`);
+  el.innerHTML = "";
+
+  const state   = gameState;
+  const counts  = state.counts[String(playerId)];
+  const isLocal = gameMode === "local";
+  const isMe    = isLocal ? state.current === playerId
+                          : (myPlayer === 0 ? state.current === playerId : myPlayer === playerId);
+  const active  = isMe && !state.over;
+
+  // Label
+  const lbl = document.createElement("span");
+  lbl.className   = "hand-label";
+  lbl.textContent = playerId === 1 ? "Red" : (gameMode === "bot" ? "Bot" : "Blue");
+  lbl.style.color = active ? P_TEXT[playerId] : "#33334a";
+  el.appendChild(lbl);
+
+  for (const tier of ["small", "medium", "large"]) {
+    const count  = counts[tier];
+    const avail  = active && count > 0;
+    const isSel  = avail && selected === tier && (isLocal ? state.current === playerId : true);
+
+    const wrap = document.createElement("div");
+    wrap.className = "barrel-btn" + (isSel ? " selected" : "") + (avail ? "" : " disabled");
+
+    // Mini canvas
+    const cw = (BW + 10)*2, ch = BH*2 + RIM*2 + 18;
+    const cc = document.createElement("canvas");
+    cc.width = cw; cc.height = ch;
+    const ctx2 = cc.getContext("2d");
+    if (avail) {
+      drawBarrel(ctx2, cw/2, ch/2 - 6, tier);
+    } else {
+      // grey out
+      ctx2.globalAlpha = 0.2;
+      drawBarrel(ctx2, cw/2, ch/2 - 6, tier);
+      ctx2.globalAlpha = 1;
+    }
+    wrap.appendChild(cc);
+
+    const countEl = document.createElement("div");
+    countEl.className   = "count";
+    countEl.textContent = `×${count}`;
+    wrap.appendChild(countEl);
+
+    if (avail) {
+      wrap.onclick = () => selectTier(tier, playerId);
+    }
+    el.appendChild(wrap);
+  }
+}
+
+function selectTier(tier, playerId) {
+  if (!gameState || gameState.over) return;
+  // Only allow if it's your turn
+  if (gameMode === "online" && myPlayer !== playerId) return;
+  if (gameMode !== "local" && gameState.current !== (myPlayer || playerId)) return;
+  selected = tier;
+  setStatus("Click a cell to place the barrel.", "#ccccdd");
+  buildHand(1);
+  buildHand(2);
+  drawBoard();
+}
+
+// ── INTERACTIONS ──────────────────────────────────────────────────────────────
+function onBoardClick(e) {
+  if (!gameState || gameState.over || !selected) {
+    if (!selected) setStatus("Pick a barrel first.", "#e53935");
+    return;
+  }
+  const rect  = e.target.getBoundingClientRect();
+  const cell  = xyToCell(e.clientX - rect.left, e.clientY - rect.top);
+  if (!cell) return;
+  const [r, c] = cell;
+
+  const player = gameMode === "local" ? gameState.current : myPlayer;
+  socket.emit("move", { code: roomCode, tier: selected, row: r, col: c, player });
+  selected = null;
+}
+
+function onBoardHover(e) {
+  const rect = e.target.getBoundingClientRect();
+  const cell = xyToCell(e.clientX - rect.left, e.clientY - rect.top);
+  const key  = cell ? cell.join(",") : null;
+  const prev = hoverCell ? hoverCell.join(",") : null;
+  if (key !== prev) { hoverCell = cell; drawBoard(); }
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  if (!gameState) return;
+  drawBoard();
+  buildHand(1);
+  buildHand(2);
+  updateTurnLabel();
+  if (gameState.over) {
+    const w = gameState.winner;
+    if (w === 0) setStatus("It's a draw!", "#aaa");
+    else if (gameMode === "bot") setStatus(w === 1 ? "You win! 🎉" : "Bot wins! 🤖", "#fdd835");
+    else if (gameMode === "online") setStatus(w === myPlayer ? "You win! 🎉" : "Opponent wins!", "#fdd835");
+    else setStatus(`${P_NAME[w]} wins!`, "#fdd835");
+    document.getElementById("timer-val").textContent = "";
+    document.getElementById("turn-label").textContent = "Game Over";
+    document.getElementById("turn-label").style.color = "#55556a";
+  } else {
+    setStatus("Select a barrel, then click a cell.", "#55556a");
+  }
+}
+
+function updateTurnLabel() {
+  if (!gameState || gameState.over) return;
+  const cur = gameState.current;
+  let txt, color;
+  if (gameMode === "bot") {
+    txt   = cur === 1 ? "Your turn" : "Bot's turn";
+    color = cur === 1 ? P_TEXT[1]  : P_TEXT[2];
+  } else if (gameMode === "online") {
+    txt   = cur === myPlayer ? "Your turn" : "Opponent's turn";
+    color = P_TEXT[cur];
+  } else {
+    txt   = `${P_NAME[cur]}'s turn`;
+    color = P_TEXT[cur];
+  }
+  const el = document.getElementById("turn-label");
+  el.textContent = txt;
+  el.style.color = color;
+}
+
+function setStatus(msg, color) {
+  const el = document.getElementById("status");
+  el.textContent  = msg;
+  el.style.color  = color || "#55556a";
+}
+
+// ── LEGEND ────────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  for (const [tier, label] of [["small","Small ×?"],["medium","Med ×?"],["large","Large ×?"]]) {
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    const cw = 40, ch = 60;
+    const cc = document.createElement("canvas");
+    cc.width = cw; cc.height = ch;
+    drawBarrel(cc.getContext("2d"), cw/2, ch/2, tier);
+    item.appendChild(cc);
+    const t = document.createElement("span");
+    t.textContent = label;
+    item.appendChild(t);
+    el.appendChild(item);
+  }
+}
+
+buildLegend();
+
+// Join code input: auto-uppercase
+document.getElementById("join-code").addEventListener("input", function() {
+  this.value = this.value.toUpperCase();
+});
+</script>
+</body>
+</html>
