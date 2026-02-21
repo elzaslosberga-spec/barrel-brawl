@@ -11,7 +11,7 @@ import game as G
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "barrelbrawl-secret")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # rooms[code] = {
 #   "state":    game state dict,
@@ -285,6 +285,5 @@ def on_disconnect():
             break
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port)
+port = int(os.environ.get("PORT", 5000))
+socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
