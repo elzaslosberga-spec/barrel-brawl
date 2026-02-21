@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: barrel-brawl
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 10000
